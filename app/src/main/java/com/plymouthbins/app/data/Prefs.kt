@@ -21,8 +21,6 @@ data class NotifyPrefs(
     val uprn: String,
     val collectiveKey: String,
     val daysAhead: Int,
-    val lookupIds: List<String>,
-    val premiseLookupId: String,
     val needsRecapture: Boolean,
     val postcode: String,
     val addressLabel: String,
@@ -33,6 +31,10 @@ data class NotifyPrefs(
     val consecutiveEmpty: Int = 0,
     val lastRefreshAtMs: Long = 0L,
     val disabledCategories: Set<String> = emptySet(),
+    // Cached relatedUPRN from premise probe. "" = unknown (probe needed),
+    // == own UPRN = private dwelling (skip probe), != own UPRN = communal.
+    val cachedRelatedUprn: String = "",
+    val dismissedUpdateTag: String = "",
 )
 
 object Prefs {
@@ -43,9 +45,9 @@ object Prefs {
     private val KEY_UPRN = stringPreferencesKey("uprn")
     private val KEY_COLLECTIVE_KEY = stringPreferencesKey("collective_key")
     private val KEY_DAYS_AHEAD = intPreferencesKey("days_ahead")
-    private val KEY_LOOKUP_IDS = stringPreferencesKey("lookup_ids")
-    private val KEY_PREMISE_LOOKUP_ID = stringPreferencesKey("premise_lookup_id")
     private val KEY_NEEDS_RECAPTURE = booleanPreferencesKey("needs_recapture")
+    private val KEY_CACHED_RELATED_UPRN = stringPreferencesKey("cached_related_uprn")
+    private val KEY_DISMISSED_UPDATE_TAG = stringPreferencesKey("dismissed_update_tag")
     private val KEY_POSTCODE = stringPreferencesKey("postcode")
     private val KEY_ADDRESS_LABEL = stringPreferencesKey("address_label")
     private val KEY_SAVED_SID = stringPreferencesKey("saved_sid")
@@ -65,9 +67,9 @@ object Prefs {
             uprn = p[KEY_UPRN] ?: "",
             collectiveKey = p[KEY_COLLECTIVE_KEY] ?: "",
             daysAhead = p[KEY_DAYS_AHEAD] ?: 14,
-            lookupIds = (p[KEY_LOOKUP_IDS] ?: "").split(',').filter { it.isNotBlank() },
-            premiseLookupId = p[KEY_PREMISE_LOOKUP_ID] ?: "",
             needsRecapture = p[KEY_NEEDS_RECAPTURE] ?: false,
+            cachedRelatedUprn = p[KEY_CACHED_RELATED_UPRN] ?: "",
+            dismissedUpdateTag = p[KEY_DISMISSED_UPDATE_TAG] ?: "",
             postcode = p[KEY_POSTCODE] ?: "",
             addressLabel = p[KEY_ADDRESS_LABEL] ?: "",
             savedSid = p[KEY_SAVED_SID] ?: "",
@@ -91,12 +93,12 @@ object Prefs {
     suspend fun setUprn(ctx: Context, v: String) = ctx.dataStore.edit { it[KEY_UPRN] = v }
     suspend fun setCollectiveKey(ctx: Context, v: String) = ctx.dataStore.edit { it[KEY_COLLECTIVE_KEY] = v }
     suspend fun setDaysAhead(ctx: Context, v: Int) = ctx.dataStore.edit { it[KEY_DAYS_AHEAD] = v.coerceIn(1, 30) }
-    suspend fun setLookupIds(ctx: Context, ids: List<String>) =
-        ctx.dataStore.edit { it[KEY_LOOKUP_IDS] = ids.distinct().joinToString(",") }
-    suspend fun setPremiseLookupId(ctx: Context, v: String) =
-        ctx.dataStore.edit { it[KEY_PREMISE_LOOKUP_ID] = v }
     suspend fun setNeedsRecapture(ctx: Context, v: Boolean) =
         ctx.dataStore.edit { it[KEY_NEEDS_RECAPTURE] = v }
+    suspend fun setCachedRelatedUprn(ctx: Context, v: String) =
+        ctx.dataStore.edit { it[KEY_CACHED_RELATED_UPRN] = v }
+    suspend fun setDismissedUpdateTag(ctx: Context, v: String) =
+        ctx.dataStore.edit { it[KEY_DISMISSED_UPDATE_TAG] = v }
     suspend fun setPostcode(ctx: Context, v: String) =
         ctx.dataStore.edit { it[KEY_POSTCODE] = v }
     suspend fun setAddressLabel(ctx: Context, v: String) =

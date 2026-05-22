@@ -93,10 +93,11 @@ fun MainScreen(
     val scope = rememberCoroutineScope()
 
     var updateInfo by remember { mutableStateOf<Updater.Update?>(null) }
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        updateInfo = withContext(Dispatchers.IO) {
+    androidx.compose.runtime.LaunchedEffect(prefs?.dismissedUpdateTag) {
+        val u = withContext(Dispatchers.IO) {
             Updater.checkLatest(BuildConfig.VERSION_NAME)
         }
+        updateInfo = if (u != null && u.tag != prefs?.dismissedUpdateTag) u else null
     }
 
     Scaffold(
@@ -119,7 +120,10 @@ fun MainScreen(
     ) { pad ->
         Column(modifier = Modifier.padding(pad)) {
             updateInfo?.let { upd ->
-                UpdateBanner(upd, onDismiss = { updateInfo = null })
+                UpdateBanner(upd, onDismiss = {
+                    updateInfo = null
+                    scope.launch { Prefs.setDismissedUpdateTag(ctx, upd.tag) }
+                })
             }
             if (prefs?.needsRecapture == true) {
                 RecaptureBanner(

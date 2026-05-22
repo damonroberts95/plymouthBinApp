@@ -125,6 +125,7 @@ fun AddressCaptureScreen(
                 Prefs.setCollectiveKey(ctx, key)
                 Prefs.setNeedsRecapture(ctx, false)
                 Prefs.setConsecutiveEmpty(ctx, 0)
+                Prefs.setCachedRelatedUprn(ctx, "")
                 Prefs.setPostcode(ctx, postcode.trim().uppercase().replace(" ", ""))
                 Prefs.setAddressLabel(ctx, opt.label)
                 ScheduleCache.write(ctx, emptyList())

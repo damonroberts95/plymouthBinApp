@@ -13,6 +13,8 @@ import com.plymouthbins.app.data.BinCollection
 import com.plymouthbins.app.data.Prefs
 import com.plymouthbins.app.data.ScheduleCache
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.LocalTime
@@ -102,8 +104,13 @@ class RefreshWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
 
         private const val CREDS_TTL_MS = 25L * 60_000L
         private const val EMPTY_THRESHOLD = 3
+        private val fetchMutex = Mutex()
 
         suspend fun fetchSchedule(ctx: Context, forceBootstrap: Boolean = false): List<BinCollection> = withContext(Dispatchers.IO) {
+            fetchMutex.withLock { fetchScheduleInner(ctx, forceBootstrap) }
+        }
+
+        private suspend fun fetchScheduleInner(ctx: Context, forceBootstrap: Boolean): List<BinCollection> {
             val prefs = Prefs.current(ctx)
 
             suspend fun fullBootstrap(): com.plymouthbins.app.data.BootstrapCreds {
@@ -132,10 +139,11 @@ class RefreshWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
 
             suspend fun tryFetch(creds: com.plymouthbins.app.data.BootstrapCreds): BinApi.FetchResult? = try {
                 // Reload key in case warmup rotated it.
-                val key = Prefs.current(ctx).collectiveKey
+                val freshPrefs = Prefs.current(ctx)
                 BinApi.fetchSchedule(
-                    creds, prefs.uprn, key,
+                    creds, prefs.uprn, freshPrefs.collectiveKey,
                     daysAhead = prefs.daysAhead,
+                    cachedRelatedUprn = freshPrefs.cachedRelatedUprn,
                 )
             } catch (t: Throwable) {
                 AppLog.w("API call failed (${t.message})")
@@ -175,6 +183,11 @@ class RefreshWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
             }
             if (result.rows.isNotEmpty()) {
                 Prefs.setLastRefreshAt(ctx, System.currentTimeMillis())
+                // Cache resolved relatedUprn so future refreshes can skip the premise probe.
+                if (result.relatedUprn.isNotBlank() && result.relatedUprn != prefs.cachedRelatedUprn) {
+                    Prefs.setCachedRelatedUprn(ctx, result.relatedUprn)
+                    AppLog.i("Cached relatedUprn=${result.relatedUprn}")
+                }
             }
             if (hasGenRecyc) {
                 if (prefs.needsRecapture) Prefs.setNeedsRecapture(ctx, false)
@@ -188,7 +201,7 @@ class RefreshWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
                     Prefs.setNeedsRecapture(ctx, true)
                 }
             }
-            result.rows
+            return result.rows
         }
     }
 }

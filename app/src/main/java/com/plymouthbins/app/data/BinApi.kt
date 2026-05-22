@@ -63,6 +63,10 @@ object BinApi {
     data class FetchResult(
         val rows: List<BinCollection>,
         val premiseLookupId: String,
+        // Resolved related UPRN. Equal to garden UPRN for private dwellings; different
+        // (often a 9-prefixed entity ID) for communal/shared-bin properties. Callers
+        // should cache this to skip future premise probes for the same address.
+        val relatedUprn: String,
     )
 
     data class AddressOption(val uprn: String, val label: String)
@@ -161,6 +165,7 @@ object BinApi {
         collectiveKey: String,
         daysAhead: Int = 60,
         daysBack: Int = 1,
+        cachedRelatedUprn: String = "",
     ): FetchResult {
         val jar = JarCookieJar()
         val host = Constants.BASE.toHttpUrl().host
@@ -169,16 +174,28 @@ object BinApi {
         var premiseId = ""
         var relatedUprn = uprn
 
-        Progress.set("Checking premise…")
-        runCatching { fetchRelatedUprn(jar, creds, uprn, collectiveKey, Constants.LOOKUP_PREMISE) }
-            .onSuccess { rel ->
-                if (rel.isNotEmpty() && rel != uprn) {
-                    premiseId = Constants.LOOKUP_PREMISE
-                    relatedUprn = rel
-                    AppLog.i("API: premise=${Constants.LOOKUP_PREMISE} -> related=$rel")
-                }
+        when {
+            cachedRelatedUprn == uprn -> {
+                AppLog.i("API: skipping premise probe — cached as private")
             }
-            .onFailure { AppLog.w("API: premise resolve failed (${it.message})") }
+            cachedRelatedUprn.isNotBlank() && cachedRelatedUprn != uprn -> {
+                relatedUprn = cachedRelatedUprn
+                premiseId = Constants.LOOKUP_PREMISE
+                AppLog.i("API: using cached related=$cachedRelatedUprn (communal)")
+            }
+            else -> {
+                Progress.set("Checking premise…")
+                runCatching { fetchRelatedUprn(jar, creds, uprn, collectiveKey, Constants.LOOKUP_PREMISE) }
+                    .onSuccess { rel ->
+                        if (rel.isNotEmpty() && rel != uprn) {
+                            premiseId = Constants.LOOKUP_PREMISE
+                            relatedUprn = rel
+                            AppLog.i("API: premise=${Constants.LOOKUP_PREMISE} -> related=$rel")
+                        }
+                    }
+                    .onFailure { AppLog.w("API: premise resolve failed (${it.message})") }
+            }
+        }
 
         val scheduleIds = Constants.SCHEDULE_LOOKUPS
         Progress.set("Fetching ${scheduleIds.size} schedule lookups…")
@@ -202,6 +219,7 @@ object BinApi {
         return FetchResult(
             rows = merged.distinctBy { it.id() }.sortedBy { it.date },
             premiseLookupId = premiseId,
+            relatedUprn = relatedUprn,
         )
     }
 

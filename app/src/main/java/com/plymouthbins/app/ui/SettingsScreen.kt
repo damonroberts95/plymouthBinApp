@@ -63,7 +63,11 @@ fun SettingsScreen(
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val prefs by Prefs.flow(ctx).collectAsState(
-        initial = NotifyPrefs(true, false, 19, 0, "", "", 14, emptyList(), "", false, "", "")
+        initial = NotifyPrefs(
+            dayBefore = true, sameDay = false, hour = 19, minute = 0,
+            uprn = "", collectiveKey = "", daysAhead = 14,
+            needsRecapture = false, postcode = "", addressLabel = "",
+        )
     )
 
     Scaffold(
