@@ -65,6 +65,96 @@ object BinApi {
         val premiseLookupId: String,
     )
 
+    data class AddressOption(val uprn: String, val label: String)
+
+    /** POST 560d with a postcode; returns the address list. WebView-free. */
+    suspend fun searchAddresses(creds: BootstrapCreds, postcode: String): List<AddressOption> =
+        withContext(Dispatchers.IO) {
+            val jar = JarCookieJar().apply { seed(Constants.BASE.toHttpUrl().host, creds.cookieHeader) }
+            val fv = JSONObject().apply {
+                put("postcode_search", field("postcode_search", postcode))
+                put("chooseAddress", field("chooseAddress", "", "select"))
+            }
+            val data = runLookup(jar, creds, Constants.LOOKUP_ADDRESS_SEARCH, fv) ?: return@withContext emptyList()
+            val rows = (data.optJSONObject("integration")?.optJSONObject("transformed")?.opt("rows_data")) ?: return@withContext emptyList()
+            val out = mutableListOf<AddressOption>()
+            val push: (JSONObject?) -> Unit = { r ->
+                if (r != null) {
+                    val uprn = r.optString("uprn").ifBlank { r.optString("name") }
+                    val label = r.optString("display").ifBlank { r.optString("name") }
+                    if (uprn.isNotBlank() && label.isNotBlank())
+                        out += AddressOption(uprn, label)
+                }
+            }
+            when (rows) {
+                is JSONArray -> for (i in 0 until rows.length()) push(rows.optJSONObject(i))
+                is JSONObject -> rows.keys().forEach { push(rows.optJSONObject(it)) }
+            }
+            out
+        }
+
+    /** POST 6936 with a UPRN; returns the matching collectiveKey. WebView-free. */
+    suspend fun fetchCollectiveKey(creds: BootstrapCreds, uprn: String): String =
+        withContext(Dispatchers.IO) {
+            val jar = JarCookieJar().apply { seed(Constants.BASE.toHttpUrl().host, creds.cookieHeader) }
+            val fv = JSONObject().apply {
+                put("collectiveUPRN", field("collectiveUPRN", uprn))
+                put("collectiveUPRNGarden", field("collectiveUPRNGarden", uprn))
+                put("UPRN", field("UPRN", uprn))
+                put("collectivePremiseDetailGetUPRN", field("collectivePremiseDetailGetUPRN", uprn))
+            }
+            val data = runLookup(jar, creds, Constants.LOOKUP_COLLECTIVE_KEY, fv) ?: return@withContext ""
+            val rows = data.optJSONObject("integration")?.optJSONObject("transformed")?.opt("rows_data")
+                ?: return@withContext ""
+            val first: JSONObject? = when (rows) {
+                is JSONArray -> rows.optJSONObject(0)
+                is JSONObject -> rows.keys().asSequence().firstOrNull()?.let { rows.optJSONObject(it) }
+                else -> null
+            }
+            first?.optString("collectiveKey")?.trim().orEmpty()
+        }
+
+    private fun runLookup(jar: JarCookieJar, creds: BootstrapCreds, lookupId: String, formValues: JSONObject): JSONObject? {
+        val url = (Constants.BASE + "/apibroker/runLookup").toHttpUrl().newBuilder()
+            .addQueryParameter("id", lookupId)
+            .addQueryParameter("repeat_against", "")
+            .addQueryParameter("noRetry", "false")
+            .addQueryParameter("getOnlyTokens", "undefined")
+            .addQueryParameter("log_id", "")
+            .addQueryParameter("app_name", "AF-Renderer::Self")
+            .addQueryParameter("_", System.currentTimeMillis().toString())
+            .addQueryParameter("sid", creds.sid)
+            .build()
+        val body = JSONObject().apply {
+            put("stopOnFailure", true)
+            put("usePHPIntegrations", true)
+            put("stage_id", Constants.STAGE_ID)
+            put("stage_name", Constants.STAGE_NAME)
+            put("formId", Constants.FORM_ID)
+            put("processId", Constants.PROCESS_ID)
+            put("formValues", JSONObject().put("Section 1", formValues))
+            put("tokens", JSONObject().put("csrf_token", creds.csrf))
+        }.toString()
+        val req = Request.Builder()
+            .url(url)
+            .post(body.toRequestBody("application/json".toMediaType()))
+            .header("x-requested-with", "XMLHttpRequest")
+            .header("content-type", "application/json")
+            .header("referer", Constants.FILLFORM_URL)
+            .header("accept", "*/*")
+            .header("User-Agent", Constants.USER_AGENT)
+            .build()
+        clientForJar(jar).newCall(req).execute().use { resp ->
+            if (resp.code in setOf(401, 403, 419)) throw AuthExpired("HTTP ${resp.code}")
+            if (!resp.isSuccessful) return null
+            val raw = resp.body?.string() ?: return null
+            val json = JSONObject(raw)
+            harvestCsrf(json, creds)
+            if (json.optString("status") != "done") return null
+            return json
+        }
+    }
+
     suspend fun fetchSchedule(
         creds: BootstrapCreds,
         uprn: String,

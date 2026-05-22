@@ -27,19 +27,26 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.plymouthbins.app.BuildConfig
 import com.plymouthbins.app.R
 import com.plymouthbins.app.data.NotifyPrefs
 import com.plymouthbins.app.data.Prefs
+import com.plymouthbins.app.data.Updater
 import com.plymouthbins.app.work.NotificationScheduler
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -133,6 +140,37 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(12.dp))
             Button(onClick = onChangeAddress, modifier = Modifier.fillMaxWidth()) {
                 Text("Change address")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            var updateMsg by remember { mutableStateOf<String?>(null) }
+            var updateChecking by remember { mutableStateOf(false) }
+            val updateCtx = LocalContext.current
+            OutlinedButton(
+                onClick = {
+                    updateChecking = true; updateMsg = null
+                    scope.launch {
+                        val u = withContext(Dispatchers.IO) { Updater.checkLatest(BuildConfig.VERSION_NAME) }
+                        updateChecking = false
+                        if (u == null) {
+                            updateMsg = "Up to date (v${BuildConfig.VERSION_NAME})"
+                        } else {
+                            updateMsg = "Update v${u.tag} available"
+                            val target = if (u.apkUrl.isNotBlank()) u.apkUrl else u.htmlUrl
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse(target))
+                            updateCtx.startActivity(intent)
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !updateChecking,
+            ) {
+                Text(if (updateChecking) "Checking…" else "Check for updates")
+            }
+            updateMsg?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp))
             }
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedButton(onClick = onOpenLog, modifier = Modifier.fillMaxWidth()) {

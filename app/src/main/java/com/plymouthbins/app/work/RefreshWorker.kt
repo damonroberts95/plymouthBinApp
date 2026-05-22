@@ -108,19 +108,10 @@ class RefreshWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
             val trigger = prefs.postcode.takeIf { it.isNotBlank() }
 
             suspend fun fullBootstrap(): com.plymouthbins.app.data.BootstrapCreds {
-                AppLog.i("Bootstrap: full WebView capture (postcode=${prefs.postcode}, uprn=${prefs.uprn})")
-                val canFull = prefs.postcode.isNotBlank() && prefs.uprn.isNotBlank()
-                val creds = if (canFull) {
-                    withContext(Dispatchers.Main) {
-                        BinBootstrap.captureFull(ctx, prefs.postcode, prefs.uprn)
-                    } ?: run {
-                        AppLog.w("Bootstrap(full) returned null, falling back to plain capture")
-                        withContext(Dispatchers.Main) { BinBootstrap.capture(ctx, triggerPostcode = trigger) }
-                    }
-                } else {
-                    withContext(Dispatchers.Main) { BinBootstrap.capture(ctx, triggerPostcode = trigger) }
-                }
-                creds ?: error("bootstrap failed")
+                AppLog.i("Bootstrap: minimal WebView session capture")
+                val creds = withContext(Dispatchers.Main) {
+                    BinBootstrap.bootstrapMinimal(ctx)
+                } ?: error("bootstrap failed")
                 Prefs.setSavedCreds(ctx, creds.sid, creds.csrf, creds.cookieHeader)
                 return creds
             }

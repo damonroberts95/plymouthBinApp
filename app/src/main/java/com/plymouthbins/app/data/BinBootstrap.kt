@@ -25,6 +25,84 @@ object BinBootstrap {
 
     private val bootstrapMutex = Mutex()
 
+    /**
+     * Minimal bootstrap: load the form page, sniff sid/csrf/cookies from the first auto-fired
+     * runLookup, return. No postcode driving, no address pick. All subsequent operations
+     * (address search, key lookup, premise resolve, schedule fetch) go through BinApi POSTs.
+     * v1.7+ flow replaces the JS-driven capture with this.
+     */
+    @SuppressLint("SetJavaScriptEnabled")
+    suspend fun bootstrapMinimal(ctx: Context, timeoutMs: Long = 30_000): BootstrapCreds? =
+        bootstrapMutex.withLock { bootstrapMinimalInternal(ctx, timeoutMs) }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private suspend fun bootstrapMinimalInternal(ctx: Context, timeoutMs: Long): BootstrapCreds? {
+        val main = Handler(Looper.getMainLooper())
+        Progress.set("Starting session…")
+        val result = withTimeoutOrNull(timeoutMs) {
+            AppLog.i("Bootstrap(min): page-load-only capture")
+            suspendCancellableCoroutine<BootstrapCreds?> { cont ->
+                main.post {
+                    val wv = WebView(ctx.applicationContext)
+                    val settings = wv.settings
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.userAgentString = Constants.USER_AGENT
+                    settings.cacheMode = WebSettings.LOAD_NO_CACHE
+
+                    val cm = CookieManager.getInstance()
+                    cm.setAcceptCookie(true)
+                    cm.setAcceptThirdPartyCookies(wv, true)
+                    cm.removeAllCookies(null)
+                    cm.flush()
+                    try { wv.clearCache(true) } catch (_: Throwable) {}
+                    try { wv.clearHistory() } catch (_: Throwable) {}
+
+                    var sid: String? = null
+                    var csrf: String? = null
+                    var resumed = false
+                    fun finish(value: BootstrapCreds?) {
+                        if (resumed) return
+                        resumed = true
+                        try { wv.stopLoading() } catch (_: Throwable) {}
+                        try { wv.destroy() } catch (_: Throwable) {}
+                        if (cont.isActive) cont.resume(value)
+                    }
+
+                    val bridge = object {
+                        @JavascriptInterface
+                        fun recordRequest(url: String, body: String) {
+                            if (!url.contains("/apibroker/runLookup")) return
+                            if (sid == null) Regex("[?&]sid=([^&]+)").find(url)?.let { sid = it.groupValues[1] }
+                            if (csrf == null) {
+                                Regex("\"csrf_token\"\\s*:\\s*\"([a-f0-9]+)\"").find(body)?.let {
+                                    csrf = it.groupValues[1]
+                                }
+                            }
+                            if (sid != null && csrf != null) {
+                                main.post {
+                                    val cookies = CookieManager.getInstance().getCookie(Constants.BASE) ?: ""
+                                    AppLog.i("Bootstrap(min): captured sid+csrf, ${cookies.count { it == '=' }} cookies")
+                                    finish(BootstrapCreds(sid!!, csrf!!, cookies))
+                                }
+                            }
+                        }
+                    }
+                    wv.addJavascriptInterface(bridge, "AndroidBridge")
+                    wv.webViewClient = object : WebViewClient() {
+                        override fun onPageFinished(view: WebView, url: String) {
+                            view.evaluateJavascript(HOOK_JS, null)
+                        }
+                    }
+                    cont.invokeOnCancellation { main.post { finish(null) } }
+                    wv.loadUrl(Constants.FORM_URL)
+                }
+            }
+        }
+        if (result == null) AppLog.w("Bootstrap(min): timed out without capturing sid/csrf")
+        return result
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     suspend fun capture(
         ctx: Context,
