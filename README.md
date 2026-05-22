@@ -101,6 +101,48 @@ For premises where `relatedUPRN != UPRN`, only rounds present in BOTH schedule
 lookups are kept. Drops Friday H22 phantoms returned by the secondary lookup
 on Adelaide St-style communal blocks.
 
+## CI / Releases
+
+`.github/workflows/`:
+- **`build.yml`** — on every push/PR to `main`: builds debug APK, uploads as workflow artifact (14d retention).
+- **`release.yml`** — on tag push `v*` (e.g. `git tag v1.7 && git push --tags`): builds signed release APK, creates a GitHub Release, uploads the APK as a release asset, auto-generates release notes.
+
+The in-app `Updater` polls `releases/latest`, compares semver, and (if newer) shows a
+banner with a **Download APK** button that opens the release's APK asset URL directly.
+
+### Required GitHub secrets (for `release.yml` to sign the APK)
+
+| Secret | Value |
+|---|---|
+| `RELEASE_KEYSTORE_BASE64` | `base64 -w0 release.keystore` output |
+| `RELEASE_KS_PASS` | keystore password |
+| `RELEASE_KEY_ALIAS` | key alias |
+| `RELEASE_KEY_PASS` | key password |
+
+Generate the keystore base64:
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("release.keystore"))
+```
+
+Then add at: Settings → Secrets and variables → Actions → New repository secret.
+
+If `RELEASE_KEYSTORE_BASE64` is missing the workflow will warn and build unsigned
+(which won't install on most devices).
+
+### Cutting a release
+
+```powershell
+# bump in gradle.properties
+APP_VERSION_CODE=9
+APP_VERSION_NAME=1.7
+
+git commit -am "Bump to v1.7"
+git tag v1.7
+git push && git push --tags
+```
+
+Workflow builds + publishes; in-app updater finds it on next launch.
+
 ## License
 
 Personal / private project. Not affiliated with Plymouth City Council.

@@ -14,7 +14,7 @@ object Updater {
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
-    data class Update(val tag: String, val htmlUrl: String, val notes: String)
+    data class Update(val tag: String, val htmlUrl: String, val apkUrl: String, val notes: String)
 
     /** Fetch latest release; returns Update if it's newer than [currentVersion], else null. */
     fun checkLatest(currentVersion: String): Update? {
@@ -32,7 +32,20 @@ object Updater {
                 val htmlUrl = j.optString("html_url", "")
                 val notes = j.optString("body", "").take(300)
                 if (tag.isBlank()) return null
-                if (isNewer(tag, currentVersion)) Update(tag, htmlUrl, notes) else null
+                if (!isNewer(tag, currentVersion)) return null
+                val assets = j.optJSONArray("assets")
+                var apkUrl = ""
+                if (assets != null) {
+                    for (i in 0 until assets.length()) {
+                        val a = assets.optJSONObject(i) ?: continue
+                        val name = a.optString("name")
+                        if (name.endsWith(".apk", ignoreCase = true)) {
+                            apkUrl = a.optString("browser_download_url")
+                            break
+                        }
+                    }
+                }
+                Update(tag, htmlUrl, apkUrl, notes)
             }
         }.getOrNull()
     }

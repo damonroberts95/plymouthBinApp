@@ -223,11 +223,13 @@ private fun UpdateBanner(upd: Updater.Update, onDismiss: () -> Unit) {
             androidx.compose.foundation.layout.Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                val target = if (upd.apkUrl.isNotBlank()) upd.apkUrl else upd.htmlUrl
+                val label = if (upd.apkUrl.isNotBlank()) "Download APK" else "Open release"
                 OutlinedButton(onClick = {
                     val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
-                        android.net.Uri.parse(upd.htmlUrl))
+                        android.net.Uri.parse(target))
                     ctx.startActivity(intent)
-                }) { Text("Open") }
+                }) { Text(label) }
                 TextButton(onClick = onDismiss) { Text("Dismiss") }
             }
         }
