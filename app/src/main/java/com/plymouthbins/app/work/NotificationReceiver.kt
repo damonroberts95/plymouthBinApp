@@ -18,6 +18,7 @@ import com.plymouthbins.app.BinsApplication
 import com.plymouthbins.app.R
 import com.plymouthbins.app.data.AppLog
 import com.plymouthbins.app.data.WasteType
+import kotlinx.coroutines.launch
 
 class NotificationReceiver : BroadcastReceiver() {
 
@@ -27,6 +28,14 @@ class NotificationReceiver : BroadcastReceiver() {
                 val waste = intent.getStringExtra(EXTRA_WASTE) ?: "Bin collection"
                 val date = intent.getStringExtra(EXTRA_DATE) ?: ""
                 val sameDay = intent.getBooleanExtra(EXTRA_SAME_DAY, false)
+                // Skip if user already marked this bin out.
+                val markedOut = kotlinx.coroutines.runBlocking {
+                    com.plymouthbins.app.data.Prefs.current(ctx).markedOut
+                }
+                if ("$date|$waste" in markedOut) {
+                    AppLog.i("Notification skipped (already marked out): $date $waste")
+                    return
+                }
                 val pretty = WasteType.pretty(waste)
                 val title = ctx.getString(
                     if (sameDay) R.string.notify_title_same_day else R.string.notify_title_day_before
@@ -38,10 +47,11 @@ class NotificationReceiver : BroadcastReceiver() {
                 val title = intent.getStringExtra(EXTRA_TITLE) ?: "Plymouth Bins"
                 val rawBody = intent.getStringExtra(EXTRA_BODY) ?: ""
                 val waste = intent.getStringExtra(EXTRA_WASTE) ?: ""
+                val date = intent.getStringExtra(EXTRA_DATE) ?: ""
                 val body = if (waste.isNotBlank()) {
                     rawBody.replace(waste, WasteType.pretty(waste))
                 } else rawBody
-                show(ctx, (title + body).hashCode(), title, body, waste, "", false)
+                show(ctx, (title + body).hashCode(), title, body, waste, date, false)
             }
             ACTION_SNOOZE -> {
                 val nid = intent.getIntExtra(EXTRA_NID, 0)
@@ -70,7 +80,22 @@ class NotificationReceiver : BroadcastReceiver() {
                 val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                 nm.cancel(nid)
                 val waste = intent.getStringExtra(EXTRA_WASTE) ?: ""
-                AppLog.i("User marked bin out: $waste")
+                val date = intent.getStringExtra(EXTRA_DATE) ?: ""
+                AppLog.i("User marked bin out: $date $waste")
+                if (date.isNotBlank() && waste.isNotBlank()) {
+                    NotificationScheduler.cancelFor(ctx, date, waste)
+                    val pending = goAsync()
+                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                        runCatching {
+                            com.plymouthbins.app.data.Prefs.addMarkedOut(ctx, "$date|$waste")
+                            val prefs = com.plymouthbins.app.data.Prefs.current(ctx)
+                            val rows = com.plymouthbins.app.data.ScheduleCache.read(ctx)
+                            NotificationScheduler.reschedule(ctx, rows, prefs)
+                            com.plymouthbins.app.widget.updateWidgets(ctx)
+                        }
+                        pending.finish()
+                    }
+                }
             }
         }
     }

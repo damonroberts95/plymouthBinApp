@@ -20,12 +20,22 @@ object NotificationScheduler {
 
     private const val MAX_PENDING = 32
 
-    fun fireImmediate(ctx: Context, title: String, body: String, wasteType: String = "") {
+    /** Cancel any visible notification(s) for the given (date, waste). Used when user marks
+     *  the bin out so a stale notif doesn't linger. Matches the ID scheme in
+     *  NotificationReceiver.show() — `(date + waste + sameDay).hashCode()`. */
+    fun cancelFor(ctx: Context, date: String, waste: String) {
+        val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        nm.cancel((date + waste + true).hashCode())
+        nm.cancel((date + waste + false).hashCode())
+    }
+
+    fun fireImmediate(ctx: Context, title: String, body: String, wasteType: String = "", date: String = "") {
         val intent = android.content.Intent(ctx, NotificationReceiver::class.java).apply {
             action = NotificationReceiver.ACTION_FIRE_IMMEDIATE
             putExtra(NotificationReceiver.EXTRA_TITLE, title)
             putExtra(NotificationReceiver.EXTRA_BODY, body)
             if (wasteType.isNotBlank()) putExtra(NotificationReceiver.EXTRA_WASTE, wasteType)
+            if (date.isNotBlank()) putExtra(NotificationReceiver.EXTRA_DATE, date)
         }
         ctx.sendBroadcast(intent)
     }
@@ -46,6 +56,7 @@ object NotificationScheduler {
         collections.asSequence()
             .filter { !it.date.isBefore(today) }
             .filter { WasteType.category(it.wasteType).name !in prefs.disabledCategories }
+            .filter { "${it.dateString}|${it.wasteType}" !in prefs.markedOut }
             .forEach { c ->
                 if (prefs.dayBefore) {
                     schedule(ctx, am, c, daysOffset = 1, time = time, slot = slot++, sameDay = false)

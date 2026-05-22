@@ -43,14 +43,16 @@ class RefreshWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
         }
     }
 
-    private fun notifyInProgressChanges(
+    private suspend fun notifyInProgressChanges(
         ctx: Context,
         prev: Map<String, BinCollection>,
         next: List<BinCollection>,
     ) {
         val today = LocalDate.now()
+        val markedOut = Prefs.current(ctx).markedOut
         for (n in next) {
             if (n.date != today) continue
+            if ("${n.dateString}|${n.wasteType}" in markedOut) continue
             val p = prev[n.id()]
             val justStarted = n.isInProgress && p?.isInProgress != true
             if (justStarted) {
@@ -60,6 +62,7 @@ class RefreshWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
                     title = "Bin truck active",
                     body = "${n.wasteType} — ${n.status}",
                     wasteType = n.wasteType,
+                    date = n.dateString,
                 )
             }
         }

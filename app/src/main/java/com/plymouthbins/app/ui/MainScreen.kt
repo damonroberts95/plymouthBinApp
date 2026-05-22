@@ -2,6 +2,7 @@ package com.plymouthbins.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,6 +22,7 @@ import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Card
@@ -47,6 +49,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -139,6 +142,28 @@ fun MainScreen(
                 Body(
                     state = state,
                     onRowClick = { sheetRow = it },
+                    markedOut = prefs?.markedOut ?: emptySet(),
+                    onToggleMarkedOut = { c ->
+                        val key = "${c.dateString}|${c.wasteType}"
+                        val cur = prefs?.markedOut ?: emptySet()
+                        val nowMarked = key !in cur
+                        val next = if (nowMarked) cur + key else cur - key
+                        scope.launch {
+                            Prefs.setMarkedOut(ctx, next)
+                            vm.rescheduleOnPrefChange()
+                        }
+                        if (nowMarked) {
+                            com.plymouthbins.app.work.NotificationScheduler.cancelFor(
+                                ctx, c.dateString, c.wasteType,
+                            )
+                        }
+                        val pretty = com.plymouthbins.app.data.WasteType.pretty(c.wasteType)
+                        val verb = if (nowMarked) "Marked out" else "Unmarked"
+                        android.widget.Toast.makeText(
+                            ctx, "$verb: $pretty (${c.date.format(rowFmt)})",
+                            android.widget.Toast.LENGTH_SHORT,
+                        ).show()
+                    },
                 )
                 PullRefreshIndicator(
                     refreshing = state.loading,
@@ -273,7 +298,12 @@ private fun RecaptureBanner(onRefresh: () -> Unit, onReenter: () -> Unit) {
 }
 
 @Composable
-private fun Body(state: BinUiState, onRowClick: (BinCollection) -> Unit) {
+private fun Body(
+    state: BinUiState,
+    onRowClick: (BinCollection) -> Unit,
+    markedOut: Set<String> = emptySet(),
+    onToggleMarkedOut: (BinCollection) -> Unit = {},
+) {
     Box(modifier = Modifier.fillMaxSize()) {
         when {
             state.collections.isEmpty() && !state.loading -> EmptyState(state.error)
@@ -282,7 +312,14 @@ private fun Body(state: BinUiState, onRowClick: (BinCollection) -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                items(state.collections) { c -> CollectionRow(c, onClick = { onRowClick(c) }) }
+                items(state.collections) { c ->
+                    val isOut = "${c.dateString}|${c.wasteType}" in markedOut
+                    CollectionRow(
+                        c, isMarkedOut = isOut,
+                        onClick = { onRowClick(c) },
+                        onLongPress = { onToggleMarkedOut(c) },
+                    )
+                }
                 if (state.error != null) item {
                     Text(
                         state.error,
@@ -358,8 +395,14 @@ private fun EmptyState(error: String?) {
 
 private val rowFmt: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE d MMM", Locale.UK)
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun CollectionRow(c: BinCollection, onClick: () -> Unit) {
+private fun CollectionRow(
+    c: BinCollection,
+    onClick: () -> Unit,
+    isMarkedOut: Boolean = false,
+    onLongPress: () -> Unit = {},
+) {
     val today = LocalDate.now()
     val days = java.time.temporal.ChronoUnit.DAYS.between(today, c.date).toInt()
     val sub = when {
@@ -382,7 +425,8 @@ private fun CollectionRow(c: BinCollection, onClick: () -> Unit) {
         colors = CardDefaults.cardColors(containerColor = containerColor),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .alpha(if (isMarkedOut) 0.55f else 1f)
+            .combinedClickable(onClick = onClick, onLongClick = onLongPress),
     ) {
         androidx.compose.foundation.layout.Row(
             modifier = Modifier.padding(16.dp),
@@ -395,7 +439,7 @@ private fun CollectionRow(c: BinCollection, onClick: () -> Unit) {
                 modifier = Modifier.size(32.dp),
             )
             Spacer(modifier = Modifier.size(12.dp))
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = pretty,
                     style = MaterialTheme.typography.titleMedium,
@@ -419,6 +463,14 @@ private fun CollectionRow(c: BinCollection, onClick: () -> Unit) {
                         fontWeight = if (c.isInProgress) FontWeight.SemiBold else FontWeight.Normal,
                     )
                 }
+            }
+            if (isMarkedOut) {
+                Icon(
+                    imageVector = androidx.compose.material.icons.Icons.Filled.Check,
+                    contentDescription = "Marked out",
+                    tint = titleColor,
+                    modifier = Modifier.size(20.dp),
+                )
             }
         }
     }

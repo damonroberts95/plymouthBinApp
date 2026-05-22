@@ -35,6 +35,8 @@ data class NotifyPrefs(
     // == own UPRN = private dwelling (skip probe), != own UPRN = communal.
     val cachedRelatedUprn: String = "",
     val dismissedUpdateTag: String = "",
+    // "YYYY-MM-DD|WasteType" keys user marked as "put out" via notification action.
+    val markedOut: Set<String> = emptySet(),
 )
 
 object Prefs {
@@ -48,6 +50,7 @@ object Prefs {
     private val KEY_NEEDS_RECAPTURE = booleanPreferencesKey("needs_recapture")
     private val KEY_CACHED_RELATED_UPRN = stringPreferencesKey("cached_related_uprn")
     private val KEY_DISMISSED_UPDATE_TAG = stringPreferencesKey("dismissed_update_tag")
+    private val KEY_MARKED_OUT = stringPreferencesKey("marked_out_keys")
     private val KEY_POSTCODE = stringPreferencesKey("postcode")
     private val KEY_ADDRESS_LABEL = stringPreferencesKey("address_label")
     private val KEY_SAVED_SID = stringPreferencesKey("saved_sid")
@@ -80,6 +83,7 @@ object Prefs {
             lastRefreshAtMs = p[KEY_LAST_REFRESH_AT] ?: 0L,
             disabledCategories = (p[KEY_DISABLED_CATEGORIES] ?: "")
                 .split(',').filter { it.isNotBlank() }.toSet(),
+            markedOut = (p[KEY_MARKED_OUT] ?: "").split('\n').filter { it.isNotBlank() }.toSet(),
         )
     }
 
@@ -120,4 +124,11 @@ object Prefs {
         ctx.dataStore.edit { it[KEY_LAST_REFRESH_AT] = ms }
     suspend fun setDisabledCategories(ctx: Context, cats: Set<String>) =
         ctx.dataStore.edit { it[KEY_DISABLED_CATEGORIES] = cats.joinToString(",") }
+    suspend fun setMarkedOut(ctx: Context, keys: Set<String>) =
+        ctx.dataStore.edit { it[KEY_MARKED_OUT] = keys.joinToString("\n") }
+    suspend fun addMarkedOut(ctx: Context, key: String) = ctx.dataStore.edit {
+        val cur = (it[KEY_MARKED_OUT] ?: "").split('\n').filter { s -> s.isNotBlank() }.toMutableSet()
+        cur += key
+        it[KEY_MARKED_OUT] = cur.joinToString("\n")
+    }
 }
