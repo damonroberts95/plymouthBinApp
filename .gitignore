@@ -1,0 +1,23 @@
+# Build / IDE
+*.iml
+.idea/
+.gradle/
+build/
+local.properties
+captures/
+
+# Keystore + credentials
+release.keystore
+*.jks
+*.keystore
+keystore.properties
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Tests (kept local, not published)
+app/src/test/
