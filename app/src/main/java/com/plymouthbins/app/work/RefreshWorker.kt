@@ -105,7 +105,6 @@ class RefreshWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
 
         suspend fun fetchSchedule(ctx: Context, forceBootstrap: Boolean = false): List<BinCollection> = withContext(Dispatchers.IO) {
             val prefs = Prefs.current(ctx)
-            val trigger = prefs.postcode.takeIf { it.isNotBlank() }
 
             suspend fun fullBootstrap(): com.plymouthbins.app.data.BootstrapCreds {
                 AppLog.i("Bootstrap: minimal WebView session capture")
@@ -113,14 +112,30 @@ class RefreshWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
                     BinBootstrap.bootstrapMinimal(ctx)
                 } ?: error("bootstrap failed")
                 Prefs.setSavedCreds(ctx, creds.sid, creds.csrf, creds.cookieHeader)
+                // Warm session by hitting LOOKUP_COLLECTIVE_KEY. This advances the form
+                // server-side state so subsequent schedule POSTs return rows, and refreshes
+                // the saved key if it rotated.
+                if (prefs.uprn.isNotBlank()) {
+                    runCatching { BinApi.fetchCollectiveKey(creds, prefs.uprn) }
+                        .onSuccess { newKey ->
+                            if (newKey.isNotBlank() && newKey != prefs.collectiveKey) {
+                                AppLog.i("Bootstrap warmup: collectiveKey rotated, saving")
+                                Prefs.setCollectiveKey(ctx, newKey)
+                            } else {
+                                AppLog.i("Bootstrap warmup: collectiveKey unchanged")
+                            }
+                        }
+                        .onFailure { AppLog.w("Bootstrap warmup: key fetch failed (${it.message})") }
+                }
                 return creds
             }
 
             suspend fun tryFetch(creds: com.plymouthbins.app.data.BootstrapCreds): BinApi.FetchResult? = try {
+                // Reload key in case warmup rotated it.
+                val key = Prefs.current(ctx).collectiveKey
                 BinApi.fetchSchedule(
-                    creds, prefs.uprn, prefs.collectiveKey, prefs.lookupIds, prefs.premiseLookupId,
+                    creds, prefs.uprn, key,
                     daysAhead = prefs.daysAhead,
-                    rebootstrap = { fullBootstrap() },
                 )
             } catch (t: Throwable) {
                 AppLog.w("API call failed (${t.message})")
@@ -154,10 +169,6 @@ class RefreshWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
                 result = tryFetch(fresh) ?: error("API failed after full bootstrap")
             }
 
-            if (result.premiseLookupId.isNotEmpty() && result.premiseLookupId != prefs.premiseLookupId) {
-                AppLog.i("Saving detected premise lookup ID: ${result.premiseLookupId}")
-                Prefs.setPremiseLookupId(ctx, result.premiseLookupId)
-            }
             val hasGenRecyc = result.rows.any {
                 val s = it.wasteType.lowercase()
                 "residual" in s || "general" in s || "recycl" in s
@@ -168,14 +179,13 @@ class RefreshWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
             if (hasGenRecyc) {
                 if (prefs.needsRecapture) Prefs.setNeedsRecapture(ctx, false)
                 if (prefs.consecutiveEmpty != 0) Prefs.setConsecutiveEmpty(ctx, 0)
-            } else if (prefs.lookupIds.isNotEmpty()) {
+            } else if (prefs.uprn.isNotBlank()) {
                 val next = prefs.consecutiveEmpty + 1
                 Prefs.setConsecutiveEmpty(ctx, next)
                 AppLog.w("Empty schedule fetch ($next consecutive)")
                 if (next >= EMPTY_THRESHOLD && !prefs.needsRecapture) {
                     AppLog.w("$EMPTY_THRESHOLD consecutive empty fetches, flagging needs recapture")
                     Prefs.setNeedsRecapture(ctx, true)
-                    Prefs.setPremiseLookupId(ctx, "")
                 }
             }
             result.rows

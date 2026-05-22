@@ -16,8 +16,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -136,8 +138,6 @@ fun AddressCaptureScreen(
                 if (key.isBlank()) error("Council returned no collectiveKey for that address.")
                 Prefs.setUprn(ctx, opt.uprn)
                 Prefs.setCollectiveKey(ctx, key)
-                Prefs.setLookupIds(ctx, emptyList())
-                Prefs.setPremiseLookupId(ctx, "")
                 Prefs.setNeedsRecapture(ctx, false)
                 Prefs.setConsecutiveEmpty(ctx, 0)
                 Prefs.setPostcode(ctx, postcode.trim().uppercase().replace(" ", ""))

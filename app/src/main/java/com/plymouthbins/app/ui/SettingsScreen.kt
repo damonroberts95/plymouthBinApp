@@ -2,6 +2,8 @@ package com.plymouthbins.app.ui
 
 import android.app.TimePickerDialog
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -76,7 +78,12 @@ fun SettingsScreen(
             )
         }
     ) { pad ->
-        Column(modifier = Modifier.padding(pad).padding(16.dp)) {
+        Column(
+            modifier = Modifier
+                .padding(pad)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+        ) {
             ToggleRow(
                 label = stringResource(R.string.notify_day_before),
                 checked = prefs.dayBefore,

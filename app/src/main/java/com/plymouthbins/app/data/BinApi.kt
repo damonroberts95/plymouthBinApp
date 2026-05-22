@@ -159,85 +159,28 @@ object BinApi {
         creds: BootstrapCreds,
         uprn: String,
         collectiveKey: String,
-        lookupIds: List<String>,
-        knownPremiseId: String,
         daysAhead: Int = 60,
         daysBack: Int = 1,
-        rebootstrap: (suspend () -> BootstrapCreds)? = null,
     ): FetchResult {
-        val ids = lookupIds.ifEmpty {
-            AppLog.w("API: no captured lookup IDs, using built-in fallback")
-            listOf(Constants.LOOKUP_PREMISE) + Constants.SCHEDULE_LOOKUPS
-        }.filter { it in Constants.SCHEDULE_FETCH_ALLOWLIST }
         val jar = JarCookieJar()
         val host = Constants.BASE.toHttpUrl().host
         jar.seed(host, creds.cookieHeader)
 
-        var premiseId = knownPremiseId.takeIf { it in ids } ?: ""
+        var premiseId = ""
         var relatedUprn = uprn
-        var rebootstrapped = false
-
-        suspend fun maybeRebootstrap(t: Throwable): Boolean {
-            if (rebootstrapped || rebootstrap == null) return false
-            if (t !is AuthExpired) return false
-            AppLog.w("API: auth expired (${t.message}), re-bootstrapping mid-loop")
-            val fresh = rebootstrap()
-            creds.sid = fresh.sid
-            creds.csrf = fresh.csrf
-            creds.cookieHeader = fresh.cookieHeader
-            jar.seed(host, fresh.cookieHeader)
-            rebootstrapped = true
-            return true
-        }
 
         Progress.set("Checking premise…")
-        if (premiseId.isNotEmpty()) {
-            try {
-                val rel = fetchRelatedUprn(jar, creds, uprn, collectiveKey, premiseId)
-                if (rel.isNotEmpty() && rel != uprn) relatedUprn = rel
-                AppLog.i("API: premise=$premiseId -> related=$rel")
-            } catch (t: Throwable) {
-                AppLog.w("API: known premise $premiseId failed (${t.message}), re-probing")
-                if (maybeRebootstrap(t)) {
-                    runCatching { fetchRelatedUprn(jar, creds, uprn, collectiveKey, premiseId) }
-                        .onSuccess { rel ->
-                            if (rel.isNotEmpty() && rel != uprn) relatedUprn = rel
-                        }
-                        .onFailure { premiseId = "" }
-                } else {
-                    premiseId = ""
+        runCatching { fetchRelatedUprn(jar, creds, uprn, collectiveKey, Constants.LOOKUP_PREMISE) }
+            .onSuccess { rel ->
+                if (rel.isNotEmpty() && rel != uprn) {
+                    premiseId = Constants.LOOKUP_PREMISE
+                    relatedUprn = rel
+                    AppLog.i("API: premise=${Constants.LOOKUP_PREMISE} -> related=$rel")
                 }
             }
-        }
+            .onFailure { AppLog.w("API: premise resolve failed (${it.message})") }
 
-        if (premiseId.isEmpty()) {
-            for (lid in ids) {
-                val attempt = runCatching { fetchRelatedUprn(jar, creds, uprn, collectiveKey, lid) }
-                if (attempt.isFailure) {
-                    val t = attempt.exceptionOrNull()
-                    if (t != null && maybeRebootstrap(t)) {
-                        runCatching { fetchRelatedUprn(jar, creds, uprn, collectiveKey, lid) }
-                            .onSuccess { rel ->
-                                if (rel.isNotEmpty() && rel != uprn) {
-                                    premiseId = lid
-                                    relatedUprn = rel
-                                    AppLog.i("API: detected premise=$lid related=$rel (post-rebootstrap)")
-                                }
-                            }
-                    }
-                } else {
-                    val rel = attempt.getOrThrow()
-                    if (rel.isNotEmpty() && rel != uprn) {
-                        premiseId = lid
-                        relatedUprn = rel
-                        AppLog.i("API: detected premise=$lid related=$rel")
-                    }
-                }
-                if (premiseId.isNotEmpty()) break
-            }
-        }
-
-        val scheduleIds = ids.filter { it != premiseId }
+        val scheduleIds = Constants.SCHEDULE_LOOKUPS
         Progress.set("Fetching ${scheduleIds.size} schedule lookups…")
         // Parallelize schedule POSTs — shared connection pool + HTTP/2 multiplex.
         val perLookup: Map<String, List<BinCollection>> = coroutineScope {
