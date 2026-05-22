@@ -15,4 +15,5 @@
     <string name="notify_title_day_before">Bins out tomorrow</string>
     <string name="notify_title_same_day">Bins out today</string>
     <string name="widget_description">Next bin collections</string>
+    <string name="widget_description_next">Next bin only (small)</string>
 </resources>

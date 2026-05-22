@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="widget_bg_surface">#111111</color>
+    <color name="widget_bg_row">#1E1E1E</color>
+    <color name="widget_text_title">#E8E6E1</color>
+    <color name="widget_text_secondary">#B0AEA8</color>
+    <color name="widget_text_muted">#888680</color>
+
+    <color name="widget_bg_recycling">#1F3A24</color>
+    <color name="widget_bg_garden">#2E3B1B</color>
+    <color name="widget_bg_food">#2C2C2C</color>
+    <color name="widget_bg_glass">#1F3340</color>
+    <color name="widget_bg_general">#3D2E22</color>
+
+    <color name="widget_accent_recycling">#8FD9A7</color>
+    <color name="widget_accent_garden">#C1D188</color>
+    <color name="widget_accent_food">#B0B0B0</color>
+    <color name="widget_accent_glass">#A8C7DB</color>
+    <color name="widget_accent_general">#CAA98C</color>
+</resources>

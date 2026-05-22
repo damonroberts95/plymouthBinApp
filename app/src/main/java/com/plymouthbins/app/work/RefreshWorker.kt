@@ -188,6 +188,9 @@ class RefreshWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
                     Prefs.setCachedRelatedUprn(ctx, result.relatedUprn)
                     AppLog.i("Cached relatedUprn=${result.relatedUprn}")
                 }
+                // Push new data to home-screen widgets.
+                com.plymouthbins.app.data.ScheduleCache.write(ctx, result.rows)
+                runCatching { com.plymouthbins.app.widget.updateWidgets(ctx) }
             }
             if (hasGenRecyc) {
                 if (prefs.needsRecapture) Prefs.setNeedsRecapture(ctx, false)

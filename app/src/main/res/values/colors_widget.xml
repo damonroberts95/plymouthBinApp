@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="widget_bg_surface">#F6F4EF</color>
+    <color name="widget_bg_row">#EEE9DF</color>
+    <color name="widget_text_title">#202020</color>
+    <color name="widget_text_secondary">#555555</color>
+    <color name="widget_text_muted">#777777</color>
+
+    <color name="widget_bg_recycling">#D8EBC9</color>
+    <color name="widget_bg_garden">#E2EDC2</color>
+    <color name="widget_bg_food">#E3E1DE</color>
+    <color name="widget_bg_glass">#CFE2EE</color>
+    <color name="widget_bg_general">#EAD9C5</color>
+
+    <color name="widget_accent_recycling">#1B6F3A</color>
+    <color name="widget_accent_garden">#55692B</color>
+    <color name="widget_accent_food">#555555</color>
+    <color name="widget_accent_glass">#2E6F8E</color>
+    <color name="widget_accent_general">#6F4A2C</color>
+</resources>
