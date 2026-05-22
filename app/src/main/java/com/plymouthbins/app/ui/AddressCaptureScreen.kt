@@ -1,8 +1,5 @@
 package com.plymouthbins.app.ui
 
-import android.content.Context
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -49,7 +46,6 @@ import com.plymouthbins.app.data.AppLog
 import com.plymouthbins.app.data.BinApi
 import com.plymouthbins.app.data.BinBootstrap
 import com.plymouthbins.app.data.BootstrapCreds
-import com.plymouthbins.app.data.LocationHelper
 import com.plymouthbins.app.data.Prefs
 import com.plymouthbins.app.data.ScheduleCache
 import com.plymouthbins.app.work.NotificationScheduler
@@ -76,18 +72,7 @@ fun AddressCaptureScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var creds by remember { mutableStateOf<BootstrapCreds?>(null) }
 
-    val locationLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) tryPrefillFromGps(ctx) { pc -> if (postcode.isBlank()) postcode = pc }
-    }
-
     LaunchedEffect(Unit) {
-        if (LocationHelper.hasLocationPermission(ctx)) {
-            tryPrefillFromGps(ctx) { pc -> if (postcode.isBlank()) postcode = pc }
-        } else {
-            locationLauncher.launch(android.Manifest.permission.ACCESS_COARSE_LOCATION)
-        }
         scope.launch {
             val c = withContext(Dispatchers.Main) {
                 BinBootstrap.bootstrapMinimal(ctx)
@@ -207,15 +192,6 @@ fun AddressCaptureScreen(
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
-        }
-    }
-}
-
-private fun tryPrefillFromGps(ctx: Context, onPostcode: (String) -> Unit) {
-    LocationHelper.lastKnownPostcode(ctx) { pc ->
-        if (!pc.isNullOrBlank()) {
-            AppLog.i("Capture: GPS prefilled postcode=$pc")
-            onPostcode(pc.uppercase())
         }
     }
 }
