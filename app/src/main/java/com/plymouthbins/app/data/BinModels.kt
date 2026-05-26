@@ -33,3 +33,13 @@ data class BootstrapCreds(
     var csrf: String,
     var cookieHeader: String,
 )
+
+sealed class BootstrapResult {
+    data class Success(val creds: BootstrapCreds) : BootstrapResult()
+    /** Main-frame HTTP error from council site (e.g. 504 Gateway Timeout). */
+    data class Unreachable(val httpCode: Int, val reason: String) : BootstrapResult()
+    /** Transport-level failure: DNS, connection refused, TLS, no network. */
+    data class NetworkError(val code: Int, val description: String) : BootstrapResult()
+    /** Page loaded but runLookup probe never captured within timeout. */
+    object Timeout : BootstrapResult()
+}

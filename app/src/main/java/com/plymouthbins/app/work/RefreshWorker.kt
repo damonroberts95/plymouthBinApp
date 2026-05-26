@@ -118,9 +118,18 @@ class RefreshWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ct
 
             suspend fun fullBootstrap(): com.plymouthbins.app.data.BootstrapCreds {
                 AppLog.i("Bootstrap: minimal WebView session capture")
-                val creds = withContext(Dispatchers.Main) {
+                val res = withContext(Dispatchers.Main) {
                     BinBootstrap.bootstrapMinimal(ctx)
-                } ?: error("bootstrap failed")
+                }
+                val creds = when (res) {
+                    is com.plymouthbins.app.data.BootstrapResult.Success -> res.creds
+                    is com.plymouthbins.app.data.BootstrapResult.Unreachable ->
+                        error("council site unreachable: HTTP ${res.httpCode} ${res.reason}")
+                    is com.plymouthbins.app.data.BootstrapResult.NetworkError ->
+                        error("network error: ${res.description} (${res.code})")
+                    com.plymouthbins.app.data.BootstrapResult.Timeout ->
+                        error("bootstrap timed out")
+                }
                 Prefs.setSavedCreds(ctx, creds.sid, creds.csrf, creds.cookieHeader)
                 // Warm session by hitting LOOKUP_COLLECTIVE_KEY. This advances the form
                 // server-side state so subsequent schedule POSTs return rows, and refreshes

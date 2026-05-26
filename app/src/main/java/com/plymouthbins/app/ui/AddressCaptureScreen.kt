@@ -46,6 +46,7 @@ import com.plymouthbins.app.data.AppLog
 import com.plymouthbins.app.data.BinApi
 import com.plymouthbins.app.data.BinBootstrap
 import com.plymouthbins.app.data.BootstrapCreds
+import com.plymouthbins.app.data.BootstrapResult
 import com.plymouthbins.app.data.Prefs
 import com.plymouthbins.app.data.ScheduleCache
 import com.plymouthbins.app.work.NotificationScheduler
@@ -72,21 +73,38 @@ fun AddressCaptureScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var creds by remember { mutableStateOf<BootstrapCreds?>(null) }
 
-    LaunchedEffect(Unit) {
+    fun runBootstrap() {
+        error = null
+        phase = Phase.BOOTSTRAPPING
         scope.launch {
-            val c = withContext(Dispatchers.Main) {
+            val res = withContext(Dispatchers.Main) {
                 BinBootstrap.bootstrapMinimal(ctx)
             }
-            if (c == null) {
-                error = "Could not start session. Check your network and try again."
-                phase = Phase.ERROR
-            } else {
-                creds = c
-                Prefs.setSavedCreds(ctx, c.sid, c.csrf, c.cookieHeader)
-                phase = Phase.READY
+            when (res) {
+                is BootstrapResult.Success -> {
+                    val c = res.creds
+                    creds = c
+                    Prefs.setSavedCreds(ctx, c.sid, c.csrf, c.cookieHeader)
+                    phase = Phase.READY
+                }
+                is BootstrapResult.Unreachable -> {
+                    error = "Plymouth Council site is unreachable (HTTP ${res.httpCode} ${res.reason}). " +
+                            "This is a problem on their end — please try again later."
+                    phase = Phase.ERROR
+                }
+                is BootstrapResult.NetworkError -> {
+                    error = "Network error: ${res.description}. Check your connection and try again."
+                    phase = Phase.ERROR
+                }
+                BootstrapResult.Timeout -> {
+                    error = "Session start timed out. Council site may be slow — try again."
+                    phase = Phase.ERROR
+                }
             }
         }
     }
+
+    LaunchedEffect(Unit) { runBootstrap() }
 
     fun startSearch() {
         val cleaned = postcode.trim().uppercase().replace(" ", "")
@@ -186,7 +204,13 @@ fun AddressCaptureScreen(
                     LogTail()
                 }
                 Phase.LIST -> AddressList(addresses, onPick = ::pickAddress)
-                Phase.ERROR -> error?.let { ErrorBox(it) }
+                Phase.ERROR -> error?.let {
+                    ErrorBox(
+                        msg = it,
+                        retryLabel = if (creds == null) "Retry session" else "Try again",
+                        onRetry = { if (creds == null) runBootstrap() else startSearch() },
+                    )
+                }
                 Phase.READY -> Text(
                     "Enter postcode then pick the matching address.",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -260,15 +284,21 @@ private fun AddressList(addresses: List<BinApi.AddressOption>, onPick: (BinApi.A
 }
 
 @Composable
-private fun ErrorBox(msg: String) {
+private fun ErrorBox(msg: String, retryLabel: String, onRetry: () -> Unit) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Text(
-            msg,
-            modifier = Modifier.padding(12.dp),
-            color = MaterialTheme.colorScheme.onErrorContainer,
-        )
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                msg,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = onRetry,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(retryLabel) }
+        }
     }
 }
