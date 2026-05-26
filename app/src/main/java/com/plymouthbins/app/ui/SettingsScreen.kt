@@ -152,36 +152,38 @@ fun SettingsScreen(
             Button(onClick = onChangeAddress, modifier = Modifier.fillMaxWidth()) {
                 Text("Change address")
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            var updateMsg by remember { mutableStateOf<String?>(null) }
-            var updateChecking by remember { mutableStateOf(false) }
-            val updateCtx = LocalContext.current
-            OutlinedButton(
-                onClick = {
-                    updateChecking = true; updateMsg = null
-                    scope.launch {
-                        val u = withContext(Dispatchers.IO) { Updater.checkLatest(BuildConfig.VERSION_NAME) }
-                        updateChecking = false
-                        if (u == null) {
-                            updateMsg = "Up to date (v${BuildConfig.VERSION_NAME})"
-                        } else {
-                            updateMsg = "Update v${u.tag} available"
-                            val target = if (u.apkUrl.isNotBlank()) u.apkUrl else u.htmlUrl
-                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
-                                android.net.Uri.parse(target))
-                            updateCtx.startActivity(intent)
+            if (Updater.isEnabled) {
+                Spacer(modifier = Modifier.height(8.dp))
+                var updateMsg by remember { mutableStateOf<String?>(null) }
+                var updateChecking by remember { mutableStateOf(false) }
+                val updateCtx = LocalContext.current
+                OutlinedButton(
+                    onClick = {
+                        updateChecking = true; updateMsg = null
+                        scope.launch {
+                            val u = withContext(Dispatchers.IO) { Updater.checkLatest(BuildConfig.VERSION_NAME) }
+                            updateChecking = false
+                            if (u == null) {
+                                updateMsg = "Up to date (v${BuildConfig.VERSION_NAME})"
+                            } else {
+                                updateMsg = "Update v${u.tag} available"
+                                val target = if (u.apkUrl.isNotBlank()) u.apkUrl else u.htmlUrl
+                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW,
+                                    android.net.Uri.parse(target))
+                                updateCtx.startActivity(intent)
+                            }
                         }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !updateChecking,
-            ) {
-                Text(if (updateChecking) "Checking…" else "Check for updates")
-            }
-            updateMsg?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp))
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !updateChecking,
+                ) {
+                    Text(if (updateChecking) "Checking…" else "Check for updates")
+                }
+                updateMsg?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp))
+                }
             }
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedButton(onClick = onOpenLog, modifier = Modifier.fillMaxWidth()) {

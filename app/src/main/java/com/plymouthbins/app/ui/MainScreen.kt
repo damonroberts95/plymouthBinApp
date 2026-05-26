@@ -96,11 +96,13 @@ fun MainScreen(
     val scope = rememberCoroutineScope()
 
     var updateInfo by remember { mutableStateOf<Updater.Update?>(null) }
-    androidx.compose.runtime.LaunchedEffect(prefs?.dismissedUpdateTag) {
-        val u = withContext(Dispatchers.IO) {
-            Updater.checkLatest(BuildConfig.VERSION_NAME)
+    if (Updater.isEnabled) {
+        androidx.compose.runtime.LaunchedEffect(prefs?.dismissedUpdateTag) {
+            val u = withContext(Dispatchers.IO) {
+                Updater.checkLatest(BuildConfig.VERSION_NAME)
+            }
+            updateInfo = if (u != null && u.tag != prefs?.dismissedUpdateTag) u else null
         }
-        updateInfo = if (u != null && u.tag != prefs?.dismissedUpdateTag) u else null
     }
 
     Scaffold(

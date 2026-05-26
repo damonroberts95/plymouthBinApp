@@ -143,6 +143,65 @@ git push && git push --tags
 
 Workflow builds + publishes; in-app updater finds it on next launch.
 
+## Distribution variants
+
+The build supports two distribution channels, gated by a single Gradle property:
+
+| Build flag | `BuildConfig.ENABLE_UPDATER` | Update channel |
+|---|---|---|
+| _(none — default)_ | `true` | `Updater.kt` polls GitHub Releases, banner offers APK download |
+| `-PplayStore=true` | `false` | `PlayUpdateHelper` uses Play in-app updates (IMMEDIATE flow) on every `onResume` |
+
+The Play Core in-app updates library is shipped in both variants; on non-Play
+installs it resolves to `UPDATE_NOT_AVAILABLE` and is a no-op, so it adds no
+behaviour to the GitHub build.
+
+### Building the Play Store AAB
+
+```powershell
+.\gradlew.bat bundleRelease -PplayStore=true
+# Output: app\build\outputs\bundle\release\app-release.aab
+```
+
+### Building a universal APK from the AAB for local testing
+
+```powershell
+# One-time
+Invoke-WebRequest "https://github.com/google/bundletool/releases/download/1.17.2/bundletool-all-1.17.2.jar" -OutFile bundletool.jar
+
+java -jar bundletool.jar build-apks `
+  --bundle=app\build\outputs\bundle\release\app-release.aab `
+  --output=app-release.apks `
+  --ks=release.keystore `
+  --ks-key-alias=$env:PLYMOUTH_KEY_ALIAS `
+  --ks-pass=pass:$env:PLYMOUTH_KS_PASS `
+  --key-pass=pass:$env:PLYMOUTH_KEY_PASS `
+  --mode=universal
+
+Rename-Item app-release.apks app-release.zip
+Expand-Archive app-release.zip -DestinationPath app-release-apks
+adb install -r app-release-apks\universal.apk
+```
+
+### Play Store submission checklist
+
+- Build AAB with `-PplayStore=true` (no GitHub-release polling).
+- Enrol upload key in Play App Signing — keep the `release.keystore` SHA-1
+  (`keytool -list -v -keystore release.keystore -alias $env:PLYMOUTH_KEY_ALIAS`).
+- Privacy policy URL: hosted at [`docs/privacy.md`](docs/privacy.md) — enable
+  GitHub Pages → branch `main` folder `/docs` → URL becomes
+  `https://damonroberts95.github.io/plymouthBinApp/privacy`.
+- Listing copy must include _"unofficial — not affiliated with Plymouth City
+  Council"_ to avoid trademark complaints.
+- Data safety form: only on-device data, no analytics, no sharing.
+- Permissions: `SCHEDULE_EXACT_ALARM` / `USE_EXACT_ALARM` need exact-alarm
+  justification on the Play Console form (reminders fired at the user's chosen
+  time).
+- Closed testing with 12+ testers over 14 days before production (Google
+  policy since 2023).
+- Upload `app/build/outputs/mapping/release/mapping.txt` for symbolicated
+  crashes (R8 already minifies).
+
 ## License
 
 Personal / private project. Not affiliated with Plymouth City Council.

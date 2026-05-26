@@ -12,6 +12,10 @@ val localProps = Properties().apply {
 fun localOrEnv(key: String): String =
     System.getenv(key) ?: localProps.getProperty(key) ?: ""
 
+// Distribution flag: pass `-PplayStore=true` to build a Play-Store-safe variant
+// (no GitHub Releases auto-updater, no off-store APK download path).
+val playStore: Boolean = (project.findProperty("playStore") as String?) == "true"
+
 android {
     namespace = "com.plymouthbins.app"
     compileSdk = 34
@@ -22,6 +26,11 @@ android {
         targetSdk = 34
         versionCode = (project.findProperty("APP_VERSION_CODE") as String).toInt()
         versionName = project.findProperty("APP_VERSION_NAME") as String
+
+        // Auto-updater + GitHub-release APK download must be disabled for Play
+        // submissions — Play forbids non-Play update channels.
+        buildConfigField("boolean", "ENABLE_UPDATER", "${!playStore}")
+        buildConfigField("String", "DISTRIBUTION", "\"${if (playStore) "playstore" else "github"}\"")
     }
 
     signingConfigs {
@@ -103,6 +112,12 @@ dependencies {
     implementation("androidx.glance:glance-material3:1.0.0")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
+    // Google Play in-app updates. Used only in the Play Store build
+    // (BuildConfig.ENABLE_UPDATER == false). On sideloaded / non-Play installs
+    // the API is a no-op, so it is safe to ship in all build variants.
+    implementation("com.google.android.play:app-update:2.1.0")
+    implementation("com.google.android.play:app-update-ktx:2.1.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")

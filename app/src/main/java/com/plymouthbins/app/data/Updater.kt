@@ -1,11 +1,16 @@
 package com.plymouthbins.app.data
 
+import com.plymouthbins.app.BuildConfig
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 object Updater {
+
+    /** Distribution build is allowed to check + offer GitHub release downloads. */
+    val isEnabled: Boolean get() = BuildConfig.ENABLE_UPDATER
+
     private const val REPO = "damonroberts95/plymouthBinApp"
     private const val URL = "https://api.github.com/repos/$REPO/releases/latest"
 
@@ -18,6 +23,7 @@ object Updater {
 
     /** Fetch latest release; returns Update if it's newer than [currentVersion], else null. */
     fun checkLatest(currentVersion: String): Update? {
+        if (!isEnabled) return null
         val req = Request.Builder()
             .url(URL)
             .header("Accept", "application/vnd.github+json")

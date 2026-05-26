@@ -25,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.plymouthbins.app.data.Prefs
+import com.plymouthbins.app.data.Updater
 import com.plymouthbins.app.ui.AddressCaptureScreen
 import com.plymouthbins.app.ui.BinTheme
 import com.plymouthbins.app.ui.DebugScreen
@@ -38,6 +39,12 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission()
     ) { /* result ignored — user can re-enable from settings */ }
 
+    // Play Store builds (ENABLE_UPDATER=false) use Play in-app updates instead of
+    // the GitHub-release auto-updater. ActivityResultLauncher must be registered
+    // before STARTED state, so initialise as a field.
+    private val playUpdater: PlayUpdateHelper? =
+        if (!Updater.isEnabled) PlayUpdateHelper(this) else null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -49,6 +56,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        playUpdater?.checkAndPrompt()
     }
 
     private fun maybeRequestPostNotifications() {
